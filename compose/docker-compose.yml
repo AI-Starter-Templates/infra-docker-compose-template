@@ -1,0 +1,123 @@
+name: ai-starter-infra
+
+networks:
+  backend:
+    driver: bridge
+  frontend:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  traefik:
+    image: traefik:v3.5
+    container_name: ai-starter-traefik
+    profiles: [dev, prod]
+    user: root
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--providers.docker.network=frontend"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - backend
+      - frontend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  api:
+    profiles: [prod]
+    build:
+      context: ../api-template
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - path: ./api.prod.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NODE_ENV: production
+      BUN_ENV: production
+      PORT: "3000"
+    security_opt:
+      - no-new-privileges:true
+
+  ui:
+    profiles: [prod]
+    build:
+      context: ../ui-template
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    networks:
+      - frontend
+    depends_on:
+      - api
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+  redis_data:
+  letsencrypt_data:

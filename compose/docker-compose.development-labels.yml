@@ -1,0 +1,10 @@
+# Dev overlay: Traefik dashboard (Docker provider) + file-based routes in traefik/dynamic/dev.yml
+# Merge: docker compose -f docker-compose.yml -f docker-compose.development-labels.yml --profile dev up -d
+
+services:
+  traefik:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dash.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik-dash.service=api@internal"
+      - "traefik.http.routers.traefik-dash.entrypoints=web"
