@@ -1,14 +1,14 @@
-# infrastructure-template
+# infra-docker-compose-template
 
 Docker Compose for **Postgres + Redis** plus **Traefik v3** (same layering style as a long-running single-VPS setup): dev routes to **api-template / ui-template on the host**, prod profile builds **API + UI images** and terminates TLS with **ACME**. Optional Prometheus / Grafana and runbooks live under [docs/](docs/).
 
-Clone this repo as a sibling named `infra` next to `api-template` so the API quickstart path works:
+Clone this repo as a sibling of `api-template` (same parent directory) so the API quickstart works:
 
 ```bash
-(cd ../infra/compose && ./dev.sh)
+(cd ../infra-docker-compose-template/compose && ./dev.sh)
 ```
 
-If you use another folder name, adjust that path.
+If you rename the clone, adjust that path (and the same path in **api-template** docs).
 
 ## Layout
 

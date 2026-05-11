@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-COMPOSE_DIR="${COMPOSE_DIR:-/path/to/infrastructure-template/compose}"
+COMPOSE_DIR="${COMPOSE_DIR:-/path/to/infra-docker-compose-template/compose}"
 cd "$COMPOSE_DIR"
 
 if [[ -f .env ]]; then
