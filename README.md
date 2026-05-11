@@ -64,10 +64,11 @@ Details: [docs/traefik.md](docs/traefik.md).
 ## Docs
 
 - [Traefik dev vs prod](docs/traefik.md)
+- [Security hardening checklist](docs/security-hardening.md)
 - [Single-host firewall and TLS](docs/runbooks/single-host-firewall-and-tls.md)
+- [Postgres backups and off-site sync](docs/backup-offsite.md) (encrypt, rclone, restore drills)
 - [Optional observability (Prometheus / Grafana)](docs/observability-optional.md)
 - [Optional GlitchTip (self-hosted errors)](docs/glitchtip-optional.md)
-- [Postgres backups and off-site sync](docs/backup-offsite.md)
 
 ## License
 

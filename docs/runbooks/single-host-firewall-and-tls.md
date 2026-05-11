@@ -43,6 +43,15 @@ sudo ufw status verbose
 
 Prefer SSH keys, disable password auth, and consider `Fail2ban` or only allowing SSH over a VPN or tailnet.
 
+## DNS-01 vs HTTP-01 (pick deliberately)
+
+| Challenge   | What it needs                                                                                                       | When it fits                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **HTTP-01** | Let’s Encrypt (or the CA) can reach your host on **port 80** for `http://<hostname>/.well-known/acme-challenge/...` | Simple VPS, origin can expose 80 during issuance/renewal, or you terminate HTTP at the edge and forward challenges.            |
+| **DNS-01**  | Your ACME client creates a **TXT** record at `_acme-challenge.<hostname>` via your DNS provider’s API               | Origin **port 80 is closed**, split-horizon DNS, wildcard certs, or you want renewal **without** poking holes in UFW for HTTP. |
+
+This repo’s **Traefik production overlay** uses **HTTP-01** on the `web` entrypoint. If you hard-lock 80 to Cloudflare-only or disable it entirely, plan to **switch Traefik to a DNS challenge** resolver for your provider, or renew through a separate process that updates certs on disk Traefik reads.
+
 ## TLS renewal (Let’s Encrypt) when 80/443 are locked down
 
 HTTP-01 challenges need **port 80** reachable by Let’s Encrypt from the internet **unless** you use DNS-01 (recommended when HTTP is closed to non-Cloudflare clients).
