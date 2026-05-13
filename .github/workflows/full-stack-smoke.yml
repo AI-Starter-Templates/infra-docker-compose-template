@@ -1,0 +1,146 @@
+name: full-stack-smoke
+
+# Boots the entire dev stack (postgres + redis + api-dev + ui-dev + traefik)
+# via docker compose and exercises the register → login → /me happy path.
+# Requires the sibling repos (api-template, ui-template) to be present —
+# this workflow checks them out alongside this repo. Triggered manually or
+# on relevant pushes; intentionally slower than the lint-only validate job.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "compose/**"
+      - ".github/workflows/full-stack-smoke.yml"
+  pull_request:
+    paths:
+      - "compose/**"
+      - ".github/workflows/full-stack-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: full-stack-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: register → login → /me through the full stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout infra
+        uses: actions/checkout@v4
+        with:
+          path: infra-docker-compose-template
+
+      - name: Checkout api-template (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/api-template
+          path: api-template
+          # Allow this workflow to keep working when api-template is in a
+          # different org; override via `vars.API_TEMPLATE_REF` if needed.
+          ref: ${{ vars.API_TEMPLATE_REF || 'main' }}
+
+      - name: Checkout ui-template (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/ui-template
+          path: ui-template
+          ref: ${{ vars.UI_TEMPLATE_REF || 'main' }}
+
+      - name: Seed compose/.env
+        working-directory: infra-docker-compose-template/compose
+        run: |
+          cp .env.example .env
+          # Postgres/Redis defaults match .env.example; nothing extra needed
+          # for the dev profile beyond what compose already has.
+
+      - name: Make scripts executable
+        run: |
+          chmod +x infra-docker-compose-template/compose/dev.sh
+          chmod +x infra-docker-compose-template/scripts/*.sh
+
+      - name: Boot the dev stack
+        working-directory: infra-docker-compose-template/compose
+        run: ./dev.sh up -d --build
+
+      - name: Wait for API health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:3000/health > /dev/null 2>&1; then
+              echo "API healthy after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://localhost:3000/health
+
+      - name: Wait for UI
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:3001/ > /dev/null 2>&1; then
+              echo "UI ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsSI http://localhost:3001/ | head -1
+
+      - name: Smoke — demo user can log in (seeded by api-migrate)
+        run: |
+          # The api-migrate one-shot seeds demo@example.com / password123 on
+          # first boot. We verify the login round-trip through the Vite
+          # proxy (so we also confirm the proxy path works end-to-end).
+          set -e
+          LOGIN_BODY=$(curl -fsS -c /tmp/cookie.jar \
+            -X POST -H "Content-Type: application/json" \
+            -d '{"email":"demo@example.com","password":"password123"}' \
+            http://localhost:3001/api/v1/auth/login)
+          echo "$LOGIN_BODY" | grep -q '"success":true'
+          ME=$(curl -fsS -b /tmp/cookie.jar http://localhost:3001/api/v1/users/me)
+          echo "$ME" | grep -q "demo@example.com"
+
+      - name: Smoke — register a brand-new user
+        run: |
+          set -e
+          BODY='{"email":"ci-smoke@example.com","password":"Hunter2Strong!","firstName":"CI","lastName":"Smoke"}'
+          OUT=$(curl -fsS -X POST -H "Content-Type: application/json" -d "$BODY" \
+            http://localhost:3001/api/v1/auth/register)
+          echo "$OUT" | grep -q '"success":true'
+
+      - name: Smoke — dashboard endpoints return real data
+        run: |
+          set -e
+          # Log in to get a cookie:
+          curl -fsS -c /tmp/cookie.jar -X POST -H "Content-Type: application/json" \
+            -d '{"email":"demo@example.com","password":"password123"}' \
+            http://localhost:3001/api/v1/auth/login > /dev/null
+          # Summary should now reflect >=1 user + >=1 widget after seed/register.
+          SUM=$(curl -fsS -b /tmp/cookie.jar http://localhost:3001/api/v1/dashboard/summary)
+          echo "$SUM" | grep -q '"totalUsers"'
+          echo "$SUM" | grep -q '"recentActivity"'
+
+      - name: Compose ps on failure
+        if: failure()
+        working-directory: infra-docker-compose-template/compose
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.development-labels.yml --profile dev ps
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          for c in $(docker ps -aq); do
+            echo "===== $(docker inspect --format '{{.Name}}' "$c") ====="
+            docker logs --tail 100 "$c" || true
+          done
+
+      - name: Tear down
+        if: always()
+        working-directory: infra-docker-compose-template/compose
+        run: |
+          ./dev.sh down -v || true

@@ -1,0 +1,159 @@
+name: validate-compose
+
+# Validates every docker-compose YAML and every meaningful overlay
+# combination — without actually building images or booting services.
+# Catches syntax errors, missing env vars, malformed Traefik labels, and
+# overlay-merge regressions before they hit a developer's `up`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: validate-compose-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compose-config:
+    name: docker compose config (all overlay combinations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # The compose build contexts point at sibling repos (`../../api-template`
+    # and `../../ui-template`). They don't exist in this checkout, so we
+    # stub them with empty Dockerfiles before running `docker compose config`.
+    # `config` only resolves references; it doesn't actually build.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stub sibling repos for build context resolution
+        run: |
+          mkdir -p ../api-template ../ui-template
+          printf "FROM scratch\n" > ../api-template/Dockerfile
+          printf "FROM scratch\n" > ../api-template/Dockerfile.prod
+          printf "FROM scratch\n" > ../ui-template/Dockerfile
+          printf "FROM scratch\n" > ../ui-template/Dockerfile.prod
+          printf "{}\n"           > ../api-template/package.json
+          printf "{}\n"           > ../ui-template/package.json
+
+      - name: Seed .env
+        run: |
+          cp compose/.env.example compose/.env
+          # Required for STACK=prod + WITH_GLITCHTIP combinations:
+          echo "GLITCHTIP_SECRET_KEY=$(openssl rand -base64 50 | tr -d '\n')" >> compose/.env
+          echo "GLITCHTIP_PUBLIC_HOST=glitchtip.example.com"                  >> compose/.env
+          echo "GLITCHTIP_BASIC_AUTH_USERS=user:placeholder"                  >> compose/.env
+
+      - name: Validate — dev (base)
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.development-labels.yml \
+            --profile dev config --quiet
+
+      - name: Validate — prod (base)
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.production-labels.yml \
+            --profile prod config --quiet
+
+      - name: Validate — dev + observability
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.development-labels.yml \
+            -f docker-compose.observability.yml \
+            --profile dev --profile observability config --quiet
+
+      - name: Validate — dev + glitchtip
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.development-labels.yml \
+            -f docker-compose.glitchtip.yml \
+            --profile dev --profile glitchtip-dev config --quiet
+
+      - name: Validate — prod + glitchtip (+ prod labels)
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.production-labels.yml \
+            -f docker-compose.glitchtip.yml \
+            -f docker-compose.glitchtip-prod-labels.yml \
+            --profile prod --profile glitchtip-prod config --quiet
+
+      - name: Validate — dev + bullmq
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.development-labels.yml \
+            -f docker-compose.bullmq.yml \
+            --profile dev --profile bullmq config --quiet
+
+      - name: Validate — dev + wud
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.development-labels.yml \
+            -f docker-compose.wud.yml \
+            --profile dev --profile wud config --quiet
+
+      - name: Validate — kitchen-sink (dev + all overlays)
+        working-directory: compose
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.development-labels.yml \
+            -f docker-compose.observability.yml \
+            -f docker-compose.glitchtip.yml \
+            -f docker-compose.bullmq.yml \
+            -f docker-compose.wud.yml \
+            --profile dev \
+            --profile observability \
+            --profile glitchtip-dev \
+            --profile bullmq \
+            --profile wud \
+            config --quiet
+
+  shellcheck:
+    name: shellcheck (scripts/)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: |
+          # Strict: error on warnings, follow `source` directives.
+          shellcheck -x -S warning compose/dev.sh scripts/*.sh
+
+  yamllint:
+    name: yamllint (compose + workflows)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: yamllint
+        run: |
+          pip install --user yamllint
+          # Document syntax (line length, indentation, truthy values) but
+          # don't fail on style nits — only on real syntax errors.
+          ~/.local/bin/yamllint -d "{extends: relaxed, rules: {line-length: disable}}" \
+            compose/ .github/workflows/
