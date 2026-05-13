@@ -139,6 +139,17 @@ services:
       - "bun install && bun run db:push --force && bun run db:seed"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}
+      # Env-validator placeholders. The migrate+seed scripts import from
+      # src/clients/postgres, which triggers the API's full env validator
+      # at module load. The values themselves are never used during
+      # migration — only the schema check matters here. Locally Bun's
+      # auto-`.env` masks this; CI has no .env, so the placeholders are
+      # required for the validator to pass.
+      NODE_ENV: development
+      JWT_SECRET: api-migrate-placeholder-secret-padded-to-thirty-two
+      FRONTEND_URL: http://app.localhost
+      ALLOWED_ORIGINS: http://app.localhost
+      PUBLIC_API_URL: http://api.localhost
     depends_on:
       postgres:
         condition: service_healthy
