@@ -1,6 +1,6 @@
 # Dev overlay — merged by dev.sh when STACK=dev.
 # Activates Traefik HTTP routers and publishes data-service ports to the host
-# so developers can `psql` / `redis-cli` / curl the API directly. Production
+# so developers can `psql` / `valkey-cli` / curl the API directly. Production
 # does NOT publish these (data services stay on the docker network only).
 
 services:
@@ -8,7 +8,7 @@ services:
     ports:
       - "5432:5432"
 
-  redis:
+  valkey:
     ports:
       - "6379:6379"
 

@@ -2,13 +2,13 @@
 # ai-starter-infra — base compose stack
 #
 # Architecture
-#   - Always-on:  postgres (data), redis (cache/queues), traefik (router),
+#   - Always-on:  postgres (data), valkey (cache/queues), traefik (router),
 #                 api-migrate (one-shot — applies schema + seeds demo user)
 #   - Dev profile (STACK=dev):  api-dev + ui-dev (bind-mount source, hot reload)
 #   - Prod profile (STACK=prod): api + ui (built from production Dockerfiles)
 #
 # Networks
-#   - backend:  data + api services (postgres, redis, api[-dev], api-migrate)
+#   - backend:  data + api services (postgres, valkey, api[-dev], api-migrate)
 #   - frontend: anything browser-facing (traefik, api[-dev], ui[-dev])
 #   - Traefik joins both, so it can route HTTP from the frontend network to
 #     services that only live on backend (e.g. api-dev).
@@ -58,26 +58,28 @@ services:
           cpus: "${POSTGRES_RESERVATIONS_CPUS:-0.25}"
           memory: "${POSTGRES_RESERVATIONS_MEMORY:-128M}"
 
-  redis:
-    image: redis:8-alpine
+  valkey:
+    # Valkey — BSD-licensed Redis-protocol-compatible store (Linux Foundation
+    # fork of Redis 7.2.4, drop-in compatible with Redis clients).
+    image: valkey/valkey:8-alpine
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - valkey_data:/data
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
     deploy:
       resources:
         limits:
-          cpus: "${REDIS_LIMITS_CPUS:-0.5}"
-          memory: "${REDIS_LIMITS_MEMORY:-256M}"
+          cpus: "${VALKEY_LIMITS_CPUS:-0.5}"
+          memory: "${VALKEY_LIMITS_MEMORY:-256M}"
         reservations:
-          cpus: "${REDIS_RESERVATIONS_CPUS:-0.1}"
-          memory: "${REDIS_RESERVATIONS_MEMORY:-64M}"
+          cpus: "${VALKEY_RESERVATIONS_CPUS:-0.1}"
+          memory: "${VALKEY_RESERVATIONS_MEMORY:-64M}"
 
   traefik:
     # Pinned to v3.7 (current stable). Earlier 3.x minors negotiate an
@@ -179,7 +181,7 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}
-      REDIS_HOST: redis
+      REDIS_HOST: valkey
       REDIS_PORT: "6379"
       NODE_ENV: development
       BUN_ENV: development
@@ -193,7 +195,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_started
       api-migrate:
         condition: service_completed_successfully
@@ -263,7 +265,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_started
       api-migrate:
         condition: service_completed_successfully
@@ -278,7 +280,7 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}
-      REDIS_HOST: redis
+      REDIS_HOST: valkey
       REDIS_PORT: "6379"
       NODE_ENV: production
       BUN_ENV: production
@@ -321,5 +323,5 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
+  valkey_data:
   letsencrypt_data:

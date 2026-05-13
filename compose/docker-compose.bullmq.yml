@@ -1,6 +1,6 @@
 # BullMQ dashboard overlay — merged when WITH_BULLMQ=1 and STACK=dev.
-# Visualizes Bull / BullMQ jobs in the api-template's Redis. Reuses the
-# existing `redis` service from the base stack.
+# Visualizes Bull / BullMQ jobs in the api-template's Valkey. Reuses the
+# existing `valkey` service from the base stack.
 
 services:
   bullmq-dashboard:
@@ -8,13 +8,13 @@ services:
     profiles: [bullmq]
     restart: unless-stopped
     environment:
-      REDIS_HOST: redis
+      REDIS_HOST: valkey
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_USE_TLS: "false"
       BULL_PREFIX: ${BULL_PREFIX:-bull}
     depends_on:
-      redis:
+      valkey:
         condition: service_started
     networks:
       - backend

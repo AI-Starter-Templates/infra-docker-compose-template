@@ -2,7 +2,7 @@
 # Stop the stack AND remove its named volumes.
 #
 # DANGER: this deletes the Postgres data volume (`postgres_data`) and the
-# Redis data volume (`redis_data`). All seeded users, schema, and queued
+# Valkey data volume (`valkey_data`). All seeded users, schema, and queued
 # jobs are gone. Use `compose-down.sh` if you only want to stop the stack.
 
 set -euo pipefail
@@ -43,7 +43,7 @@ fi
 
 # Confirmation gate. CONFIRM=yes env var skips the prompt (for CI / scripted use).
 if [[ "${CONFIRM:-}" != "yes" ]]; then
-  echo "This will DELETE all named volumes (Postgres + Redis data) for STACK=$STACK."
+  echo "This will DELETE all named volumes (Postgres + Valkey data) for STACK=$STACK."
   echo "Type 'yes' to continue, anything else to abort."
   read -r -p "> " confirmation
   if [[ "$confirmation" != "yes" ]]; then

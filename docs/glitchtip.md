@@ -2,7 +2,7 @@
 
 GlitchTip is an open-source, Sentry-compatible error tracking platform. It speaks the Sentry SDK wire protocol, so any client library (`@sentry/react`, `@sentry/node`, `sentry-elysia`, etc.) just works — you point its DSN at your GlitchTip instance instead of `sentry.io`.
 
-This template ships GlitchTip as an **optional overlay** that reuses the base stack's Postgres and Redis, so the cost of having it on is just the two GlitchTip containers (`web` + `worker`).
+This template ships GlitchTip as an **optional overlay** that reuses the base stack's Postgres and Valkey, so the cost of having it on is just the two GlitchTip containers (`web` + `worker`).
 
 ## Dev quickstart
 
@@ -26,7 +26,7 @@ Visit **http://glitchtip.localhost** and log in. Each project has a DSN under `S
 | Concern | Source |
 |---|---|
 | Database | shared Postgres, separate `glitchtip` database (created by `init-db.sql` on first postgres boot) |
-| Queue / cache | shared Redis, **DB 1** (the API uses DB 0) |
+| Queue / cache | shared Valkey, **DB 1** (the API uses DB 0) |
 | Routing (dev) | Traefik HTTP at `glitchtip.localhost` |
 | Routing (prod) | Two HTTPS routers: `/api/*` (no auth, CORS open — for SDK ingest), `/*` (Basic Auth — for the UI) |
 | Worker | `glitchtip-worker` runs Celery + Beat for ingest, alerts, and scheduled jobs |
