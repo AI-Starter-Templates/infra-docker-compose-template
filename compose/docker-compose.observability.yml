@@ -1,7 +1,10 @@
-# Optional overlay: Prometheus + Grafana + Alertmanager.
-# Usage (from compose/):
-#   WITH_OBSERVABILITY=1 ./dev.sh
-# Or: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+# Optional overlay: full observability stack.
+#   - Prometheus + Alertmanager  → metrics + alerting
+#   - Grafana                    → dashboards
+#   - Loki + Promtail            → log aggregation
+#   - postgres-exporter          → Postgres metrics
+#   - node-exporter              → host metrics
+# Usage (from compose/):  WITH_OBSERVABILITY=1 ./dev.sh
 
 services:
   prometheus:
@@ -17,8 +20,16 @@ services:
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
+    networks:
+      - backend
+      - frontend
     depends_on:
       - alertmanager
+    deploy:
+      resources:
+        limits:
+          cpus: "${PROMETHEUS_LIMITS_CPUS:-0.5}"
+          memory: "${PROMETHEUS_LIMITS_MEMORY:-512M}"
 
   alertmanager:
     profiles: ["observability"]
@@ -30,6 +41,13 @@ services:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
       - "9093:9093"
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${ALERTMANAGER_LIMITS_CPUS:-0.25}"
+          memory: "${ALERTMANAGER_LIMITS_MEMORY:-128M}"
 
   grafana:
     profiles: ["observability"]
@@ -44,9 +62,91 @@ services:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
     ports:
       - "3010:3000"
+    networks:
+      - backend
+      - frontend
     depends_on:
       - prometheus
+      - loki
+    deploy:
+      resources:
+        limits:
+          cpus: "${GRAFANA_LIMITS_CPUS:-0.5}"
+          memory: "${GRAFANA_LIMITS_MEMORY:-512M}"
+
+  loki:
+    profiles: ["observability"]
+    image: grafana/loki:3.2.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - loki_data:/loki
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${LOKI_LIMITS_CPUS:-0.5}"
+          memory: "${LOKI_LIMITS_MEMORY:-512M}"
+
+  promtail:
+    profiles: ["observability"]
+    image: grafana/promtail:3.2.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${PROMTAIL_LIMITS_CPUS:-0.25}"
+          memory: "${PROMTAIL_LIMITS_MEMORY:-128M}"
+
+  postgres-exporter:
+    profiles: ["observability"]
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_EXPORTER_LIMITS_CPUS:-0.1}"
+          memory: "${POSTGRES_EXPORTER_LIMITS_MEMORY:-64M}"
+
+  node-exporter:
+    profiles: ["observability"]
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.rootfs=/rootfs"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${NODE_EXPORTER_LIMITS_CPUS:-0.1}"
+          memory: "${NODE_EXPORTER_LIMITS_MEMORY:-64M}"
 
 volumes:
   prometheus_data:
   grafana_data:
+  loki_data:

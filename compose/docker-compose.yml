@@ -1,3 +1,29 @@
+# =============================================================================
+# ai-starter-infra — base compose stack
+#
+# Architecture
+#   - Always-on:  postgres (data), redis (cache/queues), traefik (router),
+#                 api-migrate (one-shot — applies schema + seeds demo user)
+#   - Dev profile (STACK=dev):  api-dev + ui-dev (bind-mount source, hot reload)
+#   - Prod profile (STACK=prod): api + ui (built from production Dockerfiles)
+#
+# Networks
+#   - backend:  data + api services (postgres, redis, api[-dev], api-migrate)
+#   - frontend: anything browser-facing (traefik, api[-dev], ui[-dev])
+#   - Traefik joins both, so it can route HTTP from the frontend network to
+#     services that only live on backend (e.g. api-dev).
+#
+# How to run
+#   ./dev.sh up -d                 # dev profile (default)
+#   STACK=prod ./dev.sh up -d      # prod profile
+#
+# Overlays merged automatically by dev.sh:
+#   - docker-compose.development-labels.yml  (dev: Traefik dashboard, dev routers,
+#                                             host-published data ports)
+#   - docker-compose.production-labels.yml   (prod: HTTPS + ACME + security
+#                                             middlewares)
+# =============================================================================
+
 name: ai-starter-infra
 
 networks:
@@ -14,8 +40,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-app}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -25,12 +49,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_LIMITS_CPUS:-1.0}"
+          memory: "${POSTGRES_LIMITS_MEMORY:-512M}"
+        reservations:
+          cpus: "${POSTGRES_RESERVATIONS_CPUS:-0.25}"
+          memory: "${POSTGRES_RESERVATIONS_MEMORY:-128M}"
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -40,9 +70,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "${REDIS_LIMITS_CPUS:-0.5}"
+          memory: "${REDIS_LIMITS_MEMORY:-256M}"
+        reservations:
+          cpus: "${REDIS_RESERVATIONS_CPUS:-0.1}"
+          memory: "${REDIS_RESERVATIONS_MEMORY:-64M}"
 
   traefik:
-    image: traefik:v3.5
+    # Pinned to v3.7 (current stable). Earlier 3.x minors negotiate an
+    # Engine API version that modern Docker daemons reject.
+    image: traefik:v3.7
     container_name: ai-starter-traefik
     profiles: [dev, prod]
     user: root
@@ -59,29 +99,152 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--providers.docker.network=frontend"
-      - "--providers.file.directory=/etc/traefik/dynamic"
-      - "--providers.file.watch=true"
+      # Prometheus metrics on a separate entrypoint, internal-network only
+      # (not published to the host). Scraped by Prometheus when the
+      # observability overlay is active; harmless otherwise.
+      - "--entryPoints.metrics.address=:8899"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entryPoint=metrics"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addServicesLabels=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/dynamic:/etc/traefik/dynamic:ro
     networks:
       - backend
       - frontend
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
-          cpus: "1"
-          memory: 512M
+          cpus: "${TRAEFIK_LIMITS_CPUS:-0.5}"
+          memory: "${TRAEFIK_LIMITS_MEMORY:-256M}"
         reservations:
-          cpus: "0.1"
-          memory: 64M
+          cpus: "${TRAEFIK_RESERVATIONS_CPUS:-0.1}"
+          memory: "${TRAEFIK_RESERVATIONS_MEMORY:-64M}"
+
+  # One-shot: apply schema and seed the demo user, then exit 0. api(-dev)
+  # waits for service_completed_successfully so a fresh `up` always lands
+  # with a usable DB. Reuses the dev image because drizzle-kit is a devDep.
+  api-migrate:
+    profiles: [dev, prod]
+    build:
+      context: ../../api-template
+      dockerfile: Dockerfile
+    restart: "no"
+    working_dir: /app
+    volumes:
+      - ../../api-template:/app
+    command:
+      - "sh"
+      - "-c"
+      - "bun install && bun run db:push --force && bun run db:seed"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_MIGRATE_LIMITS_CPUS:-0.5}"
+          memory: "${API_MIGRATE_LIMITS_MEMORY:-512M}"
+
+  api-dev:
+    profiles: [dev]
+    build:
+      context: ../../api-template
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ../../api-template:/app
+    command:
+      - "sh"
+      - "-c"
+      - "bun install && exec bun run dev"
+    env_file:
+      - path: ./api.dev.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-app}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NODE_ENV: development
+      BUN_ENV: development
+      PORT: "3000"
+      JWT_SECRET: ${API_DEV_JWT_SECRET:-docker-compose-api-dev-jwt-secret-keys}
+      FRONTEND_URL: ${API_DEV_FRONTEND_URL:-http://app.localhost}
+      # Accept both Traefik route and direct host access so the SPA works
+      # in either mode without re-config.
+      ALLOWED_ORIGINS: ${API_DEV_ALLOWED_ORIGINS:-http://app.localhost,http://localhost:3001}
+      PUBLIC_API_URL: ${API_DEV_PUBLIC_API_URL:-http://api.localhost}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    networks:
+      - backend
+      - frontend
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_DEV_LIMITS_CPUS:-1.5}"
+          memory: "${API_DEV_LIMITS_MEMORY:-1G}"
+        reservations:
+          cpus: "${API_DEV_RESERVATIONS_CPUS:-0.25}"
+          memory: "${API_DEV_RESERVATIONS_MEMORY:-256M}"
+
+  ui-dev:
+    profiles: [dev]
+    build:
+      context: ../../ui-template
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ../../ui-template:/app
+    environment:
+      CI: "true"
+      # Empty => same-origin (browser uses relative paths). Vite's dev server
+      # forwards /api to VITE_API_PROXY_TARGET inside the docker network.
+      VITE_API_URL: ""
+      VITE_API_PROXY_TARGET: http://api-dev:3000
+    command:
+      - "sh"
+      - "-c"
+      - "pnpm install && exec pnpm dev --host 0.0.0.0"
+    depends_on:
+      api-dev:
+        condition: service_healthy
+    networks:
+      - frontend
+    ports:
+      - "3001:3001"
+    deploy:
+      resources:
+        limits:
+          cpus: "${UI_DEV_LIMITS_CPUS:-1.5}"
+          memory: "${UI_DEV_LIMITS_MEMORY:-1G}"
+        reservations:
+          cpus: "${UI_DEV_RESERVATIONS_CPUS:-0.25}"
+          memory: "${UI_DEV_RESERVATIONS_MEMORY:-256M}"
 
   api:
     profiles: [prod]
     build:
-      context: ../api-template
+      context: ../../api-template
       dockerfile: Dockerfile.prod
     restart: unless-stopped
     networks:
@@ -91,6 +254,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      api-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
     env_file:
       - path: ./api.prod.env
         required: false
@@ -103,19 +274,39 @@ services:
       PORT: "3000"
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_LIMITS_CPUS:-1.0}"
+          memory: "${API_LIMITS_MEMORY:-512M}"
+        reservations:
+          cpus: "${API_RESERVATIONS_CPUS:-0.25}"
+          memory: "${API_RESERVATIONS_MEMORY:-128M}"
 
   ui:
     profiles: [prod]
     build:
-      context: ../ui-template
+      context: ../../ui-template
       dockerfile: Dockerfile.prod
+      # Baked into the SPA bundle at build time. Re-build when this changes.
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL:-https://${PUBLIC_API_HOST:-api.example.com}}
     restart: unless-stopped
     networks:
       - frontend
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "${UI_LIMITS_CPUS:-0.5}"
+          memory: "${UI_LIMITS_MEMORY:-128M}"
+        reservations:
+          cpus: "${UI_RESERVATIONS_CPUS:-0.1}"
+          memory: "${UI_RESERVATIONS_MEMORY:-32M}"
 
 volumes:
   postgres_data:

@@ -36,6 +36,25 @@ if [[ "${WITH_OBSERVABILITY:-0}" == "1" && -f "$ROOT/docker-compose.observabilit
   PROFILE_ARGS+=(--profile observability)
 fi
 
+if [[ "${WITH_GLITCHTIP:-0}" == "1" && -f "$ROOT/docker-compose.glitchtip.yml" ]]; then
+  COMPOSE_FILES+=(-f "$ROOT/docker-compose.glitchtip.yml")
+  PROFILE_ARGS+=(--profile "glitchtip-${STACK}")
+  # In prod, layer the GlitchTip prod labels (HTTPS + Basic Auth + CORS).
+  if [[ "$STACK" == "prod" && -f "$ROOT/docker-compose.glitchtip-prod-labels.yml" ]]; then
+    COMPOSE_FILES+=(-f "$ROOT/docker-compose.glitchtip-prod-labels.yml")
+  fi
+fi
+
+if [[ "${WITH_BULLMQ:-0}" == "1" && "$STACK" == "dev" && -f "$ROOT/docker-compose.bullmq.yml" ]]; then
+  COMPOSE_FILES+=(-f "$ROOT/docker-compose.bullmq.yml")
+  PROFILE_ARGS+=(--profile bullmq)
+fi
+
+if [[ "${WITH_WUD:-0}" == "1" && -f "$ROOT/docker-compose.wud.yml" ]]; then
+  COMPOSE_FILES+=(-f "$ROOT/docker-compose.wud.yml")
+  PROFILE_ARGS+=(--profile wud)
+fi
+
 if [[ $# -eq 0 ]]; then
   set -- up -d
 fi

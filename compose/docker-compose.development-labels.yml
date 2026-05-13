@@ -1,10 +1,38 @@
-# Dev overlay: Traefik dashboard (Docker provider) + file-based routes in traefik/dynamic/dev.yml
-# Merge: docker compose -f docker-compose.yml -f docker-compose.development-labels.yml --profile dev up -d
+# Dev overlay — merged by dev.sh when STACK=dev.
+# Activates Traefik HTTP routers and publishes data-service ports to the host
+# so developers can `psql` / `redis-cli` / curl the API directly. Production
+# does NOT publish these (data services stay on the docker network only).
 
 services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
   traefik:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik-dash.rule=Host(`traefik.localhost`)"
       - "traefik.http.routers.traefik-dash.service=api@internal"
       - "traefik.http.routers.traefik-dash.entrypoints=web"
+
+  api-dev:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=backend"
+      - "traefik.http.routers.api-dev.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.api-dev.entrypoints=web"
+      - "traefik.http.routers.api-dev.service=api-dev"
+      - "traefik.http.services.api-dev.loadbalancer.server.port=3000"
+
+  ui-dev:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=frontend"
+      - "traefik.http.routers.ui-dev.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.ui-dev.entrypoints=web"
+      - "traefik.http.routers.ui-dev.service=ui-dev"
+      - "traefik.http.services.ui-dev.loadbalancer.server.port=3001"

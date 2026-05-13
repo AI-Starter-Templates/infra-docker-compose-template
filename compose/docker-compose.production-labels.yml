@@ -1,11 +1,15 @@
-# Production overlay: HTTPS redirect, ACME HTTP-01, TLS routers for api + ui containers.
-# Merge: docker compose -f docker-compose.yml -f docker-compose.production-labels.yml --profile prod up -d
-# Set PUBLIC_API_HOST, PUBLIC_UI_HOST, ACME_EMAIL in compose/.env (real DNS names for ACME).
+# Prod overlay — merged by dev.sh when STACK=prod.
+# Adds HTTPS redirect, ACME HTTP-01 cert resolver, and security/rate-limit
+# middlewares. Requires PUBLIC_API_HOST, PUBLIC_UI_HOST, ACME_EMAIL in
+# compose/.env (real DNS names for ACME).
 
 services:
   traefik:
+    # Compose REPLACES `command:` from the base file (it does not merge
+    # arrays). Dashboard is deliberately omitted here so it's not reachable
+    # in prod — re-add `--api.dashboard=true` + an auth-protected router if
+    # you need it.
     command:
-      - "--api.dashboard=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"

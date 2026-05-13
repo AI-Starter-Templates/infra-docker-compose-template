@@ -1,0 +1,38 @@
+# WUD (What's Up Docker) — auto-detects when newer image tags become
+# available for any running container and notifies via Discord. Merged in
+# by dev.sh when WITH_WUD=1.
+#
+# Notify-only by default: we deliberately DON'T mount docker-compose.yml
+# read-write, so WUD cannot auto-patch the file. Auto-patching is a
+# surprise foot-gun in a starter template; humans should review and bump
+# image tags.
+#
+# Discord webhook is optional. Without it, WUD still runs and exposes
+# results at http://localhost:3033/ — the dashboard's the fallback.
+
+services:
+  whatsupdocker:
+    image: getwud/wud:latest
+    profiles: [wud]
+    restart: unless-stopped
+    environment:
+      WUD_LOG_LEVEL: ${WUD_LOG_LEVEL:-info}
+      WUD_WATCHER_LOCAL_CRON: ${WUD_SCHEDULE:-0 */6 * * *}
+      WUD_TRIGGER_DISCORD_1_URL: ${WUD_DISCORD_WEBHOOK:-}
+      WUD_REGISTRY_GHCR_USERNAME: ${WUD_GHCR_USERNAME:-}
+      WUD_REGISTRY_GHCR_TOKEN: ${WUD_GHCR_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - wud_data:/store
+    ports:
+      - "3033:3000"
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${WUD_LIMITS_CPUS:-0.25}"
+          memory: "${WUD_LIMITS_MEMORY:-256M}"
+
+volumes:
+  wud_data:
