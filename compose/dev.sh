@@ -55,6 +55,11 @@ if [[ "${WITH_WUD:-0}" == "1" && -f "$ROOT/docker-compose.wud.yml" ]]; then
   PROFILE_ARGS+=(--profile wud)
 fi
 
+if [[ "${WITH_MAILPIT:-0}" == "1" && "$STACK" == "dev" && -f "$ROOT/docker-compose.mailpit.yml" ]]; then
+  COMPOSE_FILES+=(-f "$ROOT/docker-compose.mailpit.yml")
+  PROFILE_ARGS+=(--profile mailpit)
+fi
+
 if [[ $# -eq 0 ]]; then
   set -- up -d
 fi

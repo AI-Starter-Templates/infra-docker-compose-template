@@ -1,7 +1,13 @@
 # Dev overlay — merged by dev.sh when STACK=dev.
-# Activates Traefik HTTP routers and publishes data-service ports to the host
-# so developers can `psql` / `valkey-cli` / curl the API directly. Production
-# does NOT publish these (data services stay on the docker network only).
+#
+# Routing model: no Traefik in default dev. Browser hits Vite directly on
+# http://localhost:3001; Vite's dev-server proxy forwards /api/* to api-dev
+# over the docker network. Same-origin from the browser's perspective, so
+# no CORS preflights happen in dev.
+#
+# This file only publishes data-service host ports so developers can `psql`,
+# `valkey-cli`, or curl the API directly. Production does NOT publish these
+# (data services stay on the docker network only).
 
 services:
   postgres:
@@ -11,28 +17,3 @@ services:
   valkey:
     ports:
       - "6379:6379"
-
-  traefik:
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dash.rule=Host(`traefik.localhost`)"
-      - "traefik.http.routers.traefik-dash.service=api@internal"
-      - "traefik.http.routers.traefik-dash.entrypoints=web"
-
-  api-dev:
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=backend"
-      - "traefik.http.routers.api-dev.rule=Host(`api.localhost`)"
-      - "traefik.http.routers.api-dev.entrypoints=web"
-      - "traefik.http.routers.api-dev.service=api-dev"
-      - "traefik.http.services.api-dev.loadbalancer.server.port=3000"
-
-  ui-dev:
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=frontend"
-      - "traefik.http.routers.ui-dev.rule=Host(`app.localhost`)"
-      - "traefik.http.routers.ui-dev.entrypoints=web"
-      - "traefik.http.routers.ui-dev.service=ui-dev"
-      - "traefik.http.services.ui-dev.loadbalancer.server.port=3001"

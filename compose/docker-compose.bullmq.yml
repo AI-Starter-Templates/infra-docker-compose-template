@@ -8,9 +8,11 @@ services:
     profiles: [bullmq]
     restart: unless-stopped
     environment:
+      # bull-board's container reads REDIS_* (third-party naming). We
+      # populate them from the operator-facing VALKEY_* values.
       REDIS_HOST: valkey
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${VALKEY_PASSWORD:-}
       REDIS_USE_TLS: "false"
       BULL_PREFIX: ${BULL_PREFIX:-bull}
     depends_on:
