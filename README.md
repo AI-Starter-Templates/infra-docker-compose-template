@@ -28,7 +28,7 @@ Flags compose freely.
 
 ## Full docs
 
-**https://boringstack.xyz/infra** — service inventory, the profile/overlay model, resource limits, secrets, and runbooks (firewall + TLS, backups, Cloudflare Email setup, image updates).
+The [infra overview](https://boringstack.xyz/infra/overview/) covers the service inventory, the profile/overlay model, [resource limits](https://boringstack.xyz/infra/resource-limits/), and [secrets](https://boringstack.xyz/infra/secrets/). The runbooks for [firewall + TLS](https://boringstack.xyz/runbooks/firewall-and-tls/), [backups](https://boringstack.xyz/runbooks/backups/), [Cloudflare Email setup](https://boringstack.xyz/runbooks/cloudflare-email-setup/), and [image updates](https://boringstack.xyz/runbooks/image-updates/) live alongside.
 
 The `docs/` folder in this repo is the canonical source for now; the docs site is being progressively promoted from those files.
 
