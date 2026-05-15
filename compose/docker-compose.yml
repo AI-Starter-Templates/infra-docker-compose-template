@@ -174,7 +174,13 @@ services:
       ALLOWED_ORIGINS: ""
       PUBLIC_API_URL: http://localhost:3001/api
       # Optional superuser bootstrap. Empty = seed script skips. Both set =
-      # an admin user is created on the first migrate. See api-template/.env.example.
+      # an admin user is created on the first migrate.
+      #
+      # Set these in `compose/.env` (this directory's .env), NOT in
+      # `api-template/.env` — Docker Compose interpolates `${SUPERUSER_EMAIL}`
+      # against its own env (this file + shell), and the explicit `:-` default
+      # below overrides anything Bun's .env loader would do inside the
+      # container.
       SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-}
       SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-}
     depends_on:
