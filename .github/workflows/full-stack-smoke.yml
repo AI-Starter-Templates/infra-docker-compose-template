@@ -57,8 +57,15 @@ jobs:
         working-directory: infra-docker-compose-template/compose
         run: |
           cp .env.example .env
-          # Postgres/Redis defaults match .env.example; nothing extra needed
-          # for the dev profile beyond what compose already has.
+          # Inject the demo-user credentials the api-migrate one-shot seeds on
+          # first boot. The smoke steps below log in as this user; without
+          # these vars the seed script silently skips and login returns 401.
+          {
+            echo ""
+            echo "# Smoke-test only — never use these in real deployments."
+            echo "SUPERUSER_EMAIL=demo@example.com"
+            echo "SUPERUSER_PASSWORD=password123"
+          } >> .env
 
       - name: Make scripts executable
         run: |
