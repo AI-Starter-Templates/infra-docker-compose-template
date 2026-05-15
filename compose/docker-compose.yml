@@ -226,6 +226,11 @@ services:
       # api directly across origins (e.g., curl from another host).
       ALLOWED_ORIGINS: ${API_DEV_ALLOWED_ORIGINS:-}
       PUBLIC_API_URL: ${API_DEV_PUBLIC_API_URL:-http://localhost:3001/api}
+      # Realtime notifications via SSE. Default `true` in dev because the
+      # ui-template mounts the consumer on every authenticated route and
+      # would otherwise hit 404 on /api/v1/notifications/stream. Prod stays
+      # opt-in (the api's env validator defaults to false there).
+      NOTIFICATIONS_SSE_ENABLED: ${API_DEV_NOTIFICATIONS_SSE_ENABLED:-true}
     depends_on:
       postgres:
         condition: service_healthy
