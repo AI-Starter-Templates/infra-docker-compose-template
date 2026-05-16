@@ -149,7 +149,7 @@ jobs:
             http://localhost:3001/api/v1/auth/login > /dev/null
           # Summary should now reflect >=1 user + >=1 widget after seed/register.
           SUM=$(curl -fsS -b /tmp/cookie.jar http://localhost:3001/api/v1/dashboard/summary)
-          echo "$SUM" | grep -q '"totalUsers"'
+          echo "$SUM" | grep -q '"totalEvents"'
           echo "$SUM" | grep -q '"recentActivity"'
 
       - name: Compose ps on failure
