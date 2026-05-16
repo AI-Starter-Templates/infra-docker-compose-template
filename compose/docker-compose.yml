@@ -141,12 +141,11 @@ services:
           cpus: "${TRAEFIK_RESERVATIONS_CPUS:-0.1}"
           memory: "${TRAEFIK_RESERVATIONS_MEMORY:-64M}"
 
-  # One-shot: apply schema and (optionally) seed a superuser from
-  # SUPERUSER_EMAIL + SUPERUSER_PASSWORD, then exit 0. api(-dev) waits for
-  # service_completed_successfully so a fresh `up` always lands with a usable
-  # DB. Reuses the dev image because drizzle-kit is a devDep.
-  api-migrate:
-    profiles: [dev, prod]
+  # Dev one-shot: apply schema via db:push (schema-diff, acceptable for dev)
+  # and optionally seed a superuser. Uses the dev image (drizzle-kit is a
+  # devDep) and bind-mounts source so local schema changes are picked up.
+  api-migrate-dev:
+    profiles: [dev]
     build:
       context: ../../api-template
       dockerfile: Dockerfile
@@ -164,23 +163,50 @@ services:
       # Env-validator placeholders. The migrate+seed scripts import from
       # src/clients/postgres, which triggers the API's full env validator
       # at module load. The values themselves are never used during
-      # migration — only the schema check matters here. Locally Bun's
-      # auto-`.env` masks this; CI has no .env, so the placeholders are
-      # required for the validator to pass.
+      # migration — only the schema check matters here.
       NODE_ENV: development
       JWT_SECRET: api-migrate-placeholder-secret-padded-to-thirty-two
-      # Same-origin dev: Vite proxies /api/* to api-dev. No CORS needed.
       FRONTEND_URL: http://localhost:3001
       ALLOWED_ORIGINS: ""
       PUBLIC_API_URL: http://localhost:3001/api
-      # Optional superuser bootstrap. Empty = seed script skips. Both set =
-      # an admin user is created on the first migrate.
-      #
-      # Set these in `compose/.env` (this directory's .env), NOT in
-      # `api-template/.env` — Docker Compose interpolates `${SUPERUSER_EMAIL}`
-      # against its own env (this file + shell), and the explicit `:-` default
-      # below overrides anything Bun's .env loader would do inside the
-      # container.
+      SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-}
+      SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_MIGRATE_LIMITS_CPUS:-0.5}"
+          memory: "${API_MIGRATE_LIMITS_MEMORY:-512M}"
+
+  # Prod one-shot: apply committed migrations via db:migrate (safe — never
+  # drops columns) and optionally seed a superuser. Uses the dev image because
+  # drizzle-kit is a devDep; source is baked into the image (no bind-mount).
+  api-migrate-prod:
+    profiles: [prod]
+    build:
+      context: ../../api-template
+      dockerfile: Dockerfile
+    restart: "no"
+    logging: *default-logging
+    working_dir: /app
+    command:
+      - "sh"
+      - "-c"
+      - "bun run db:migrate && bun run db:seed"
+    env_file:
+      - path: ./api.prod.env
+        required: false
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-}:${POSTGRES_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-}"
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:-migrate-placeholder-secret-padded-to-thirty-two-chars}
+      FRONTEND_URL: ${FRONTEND_URL:-https://example.com}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://example.com/api}
       SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-}
       SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-}
     depends_on:
@@ -236,7 +262,7 @@ services:
         condition: service_healthy
       valkey:
         condition: service_started
-      api-migrate:
+      api-migrate-dev:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
@@ -330,7 +356,7 @@ services:
         condition: service_healthy
       valkey:
         condition: service_started
-      api-migrate:
+      api-migrate-prod:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]

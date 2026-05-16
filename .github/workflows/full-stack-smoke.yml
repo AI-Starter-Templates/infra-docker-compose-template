@@ -112,6 +112,13 @@ jobs:
           ME=$(curl -fsS -b /tmp/cookie.jar http://localhost:3001/api/v1/users/me)
           echo "$ME" | grep -q "demo@example.com"
 
+      - name: Check UI OpenAPI schema is up to date
+        working-directory: ui-template
+        run: |
+          npm install -g pnpm@11.1.2
+          pnpm install --frozen-lockfile
+          pnpm generate:api:check
+
       - name: Smoke — register a brand-new user
         run: |
           set -e
