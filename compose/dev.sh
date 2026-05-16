@@ -24,6 +24,14 @@ case "$STACK" in
   prod)
     COMPOSE_FILES+=(-f "$ROOT/docker-compose.production-labels.yml")
     PROFILE_ARGS+=(--profile prod)
+    : "${POSTGRES_USER:?POSTGRES_USER required in prod. Set in compose/.env or via terraform.tfvars.}"
+    : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in prod. Set in compose/.env or via terraform.tfvars.}"
+    : "${POSTGRES_DB:?POSTGRES_DB required in prod. Set in compose/.env or via terraform.tfvars.}"
+    : "${JWT_SECRET:?JWT_SECRET required in prod (>=32 chars). Generate with: openssl rand -base64 48}"
+    : "${FRONTEND_URL:?FRONTEND_URL required in prod. e.g. https://example.com}"
+    : "${PUBLIC_API_URL:?PUBLIC_API_URL required in prod. Same-origin example: https://example.com/api}"
+    : "${PUBLIC_UI_HOST:?PUBLIC_UI_HOST required in prod. Bare DNS name, e.g. example.com}"
+    : "${ACME_EMAIL:?ACME_EMAIL required in prod for ACME/Lets Encrypt. e.g. you@example.com}"
     ;;
   *)
     echo "[ERROR] STACK must be \"dev\" or \"prod\" (got: ${STACK})" >&2

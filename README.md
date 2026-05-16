@@ -12,7 +12,7 @@ chmod +x compose/dev.sh scripts/*.sh
 ./scripts/compose-up.sh                    # boot dev stack
 ```
 
-First start runs migrations and seeds a demo user. Sign in at **http://localhost:3001** with `demo@example.com` / `password123`.
+First start runs migrations; sign up at **http://localhost:3001** to create the first user. To seed an admin user automatically instead, uncomment `SUPERUSER_EMAIL` and `SUPERUSER_PASSWORD` in `compose/.env` before booting.
 
 ## Overlays
 
@@ -29,8 +29,6 @@ Flags compose freely.
 ## Full docs
 
 The [infra overview](https://boringstack.xyz/infra/overview/) covers the service inventory, the profile/overlay model, [resource limits](https://boringstack.xyz/infra/resource-limits/), and [secrets](https://boringstack.xyz/infra/secrets/). The runbooks for [firewall + TLS](https://boringstack.xyz/runbooks/firewall-and-tls/), [backups](https://boringstack.xyz/runbooks/backups/), [Cloudflare Email setup](https://boringstack.xyz/runbooks/cloudflare-email-setup/), and [image updates](https://boringstack.xyz/runbooks/image-updates/) live alongside.
-
-The `docs/` folder in this repo is the canonical source for now; the docs site is being progressively promoted from those files.
 
 ## License
 
