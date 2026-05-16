@@ -33,12 +33,12 @@ jobs:
 
     steps:
       - name: Checkout infra
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: infra-docker-compose-template
 
       - name: Checkout api-template (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.repository_owner }}/api-template
           path: api-template
@@ -47,7 +47,7 @@ jobs:
           ref: ${{ vars.API_TEMPLATE_REF || 'main' }}
 
       - name: Checkout ui-template (sibling)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.repository_owner }}/ui-template
           path: ui-template
