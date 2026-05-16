@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Stub sibling repos for build context resolution
         run: |
@@ -135,7 +135,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: ShellCheck
         run: |
@@ -148,7 +148,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: yamllint
         run: |
